@@ -1,0 +1,116 @@
+version: "3.8"
+
+services:
+  redis:
+    image: redis:7.2-bookworm
+    container_name: redis-airflow
+    ports:
+      - "6379:6379"
+    restart: always
+
+  airflow-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    image: airflow:2.10.5-custom-0.0.1
+    container_name: airflow-init
+    env_file:
+      - ./.env
+    environment:
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__CORE__FERNET_KEY=sngP8569j4FloXgFGBpUh92OeKbm19ZxR6W6pb9BqWk=
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__CORE__TEST_CONNECTION=true
+      - AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK=true
+      - AIRFLOW__SCHEDULER__LOCAL_TASK_JOB_HEARTBEAT_SEC=600
+      - AIRFLOW__SCHEDULER__SCHEDULER_ZOMBIE_TASK_THRESHOLD=600
+      - AIRFLOW__SCHEDULER__ZOMBIE_DETECTION_INTERVAL=120
+    command: >
+      bash -c "airflow db init &&
+               airflow users create --username admin --password admin \
+               --firstname Admin --lastname User --role Admin --email admin@example.com"
+    volumes:
+      - airflow-data:/opt/airflow
+      - ./dags:/opt/git/airflow-dags.git
+
+  webserver:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    image: airflow:2.10.5-custom-0.0.1
+    container_name: airflow-webserver
+    depends_on:
+      - redis
+      - airflow-init
+    ports:
+      - "8080:8080"
+    command: ["airflow", "webserver"]
+    env_file:
+      - ./.env
+    environment:
+      - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=True
+    volumes:
+      - airflow-data:/opt/airflow
+      - ./dags:/opt/git/airflow-dags.git
+      - ./logs:/opt/airflow/logs
+      - ./datasets:/tmp/datasets/
+    restart: always
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    image: airflow:2.10.5-custom-0.0.1
+    container_name: airflow-scheduler
+    depends_on:
+      - redis
+      - airflow-init
+    command: ["airflow", "scheduler"]
+    env_file:
+      - ./.env
+    volumes:
+      - airflow-data:/opt/airflow
+      - ./dags:/opt/git/airflow-dags.git
+      - ./logs:/opt/airflow/logs
+      - ./datasets:/tmp/datasets/
+    restart: always
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    image: airflow:2.10.5-custom-0.0.1
+    container_name: airflow-worker
+    depends_on:
+      - redis
+      - airflow-init
+    command: ["airflow", "celery", "worker"]
+    env_file:
+      - ./.env
+    volumes:
+      - airflow-data:/opt/airflow
+      - ./dags:/opt/git/airflow-dags.git
+      - ./logs:/opt/airflow/logs
+      - ./datasets:/tmp/datasets/
+    restart: always
+
+  # git-sync:
+  #   image: k8s.gcr.io/git-sync/git-sync:v4.1.0
+  #   container_name: airflow-git-sync
+  #   environment:
+  #     - GITSYNC_REPO=https://git.nuvem.online/cnj/airflow-dags.git
+  #     - GITSYNC_BRANCH=prod
+  #     - GITSYNC_DEST=airflow-dags
+  #     - GITSYNC_ROOT=/tmp/git
+  #     - GITSYNC_WAIT=30
+  #     - GITSYNC_ONE_TIME=false
+  #     - GITSYNC_USERNAME=cnj
+  #     - GITSYNC_PASSWORD=ababababab
+  #   volumes:
+  #     - ./dags:/tmp/git/airflow-dags
+
+volumes:
+  airflow-data:
+  # logs:
+  # datasets:

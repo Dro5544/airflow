@@ -1,0 +1,20 @@
+FROM apache/airflow:2.10.5
+
+ENV PYTHONPATH=/opt/airflow/dags
+
+#ENV PYTHONPATH="${PYTHONPATH}:${CUSTOM_PACKAGES_FOLDER}"
+
+USER root
+
+RUN mkdir "/opt/git"
+RUN mkdir "/tmp/datasets/"
+
+RUN chown -R airflow /opt
+
+USER airflow
+
+COPY requirements.txt /
+
+RUN pip install --upgrade pip
+RUN pip install --no-cache-dir "apache-airflow==${AIRFLOW_VERSION}" -r /requirements.txt
+
